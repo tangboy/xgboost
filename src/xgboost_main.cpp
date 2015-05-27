@@ -75,6 +75,7 @@ class BoostLearnTask {
     if (!strcmp("pred_margin", name)) pred_margin = atoi(val);
     if (!strcmp("ntree_limit", name)) ntree_limit = atoi(val);
     if (!strcmp("save_period", name)) save_period = atoi(val);
+    if (!strcmp("eval_period", name)) eval_period = atoi(val);
     if (!strcmp("eval_train", name)) eval_train = atoi(val);
     if (!strcmp("task", name)) task = val;
     if (!strcmp("data", name)) train_path = val;
@@ -103,6 +104,7 @@ class BoostLearnTask {
     use_buffer = 1;
     num_round = 10;
     save_period = 0;
+    eval_period = 1;
     eval_train = 0;
     pred_margin = 0;
     ntree_limit = 0;
@@ -195,6 +197,7 @@ class BoostLearnTask {
         version += 1;
       }
       utils::Assert(version == rabit::VersionNumber(), "consistent check");
+      if (i%eval_period == 0){
       std::string res = learner.EvalOneIter(i, devalall, eval_data_names);
       if (rabit::IsDistributed()){
         if (rabit::GetRank() == 0) {
@@ -204,6 +207,7 @@ class BoostLearnTask {
         if (silent < 2) {
           fprintf(stderr, "%s\n", res.c_str());
         }
+      }
       }
       if (save_period != 0 && (i + 1) % save_period == 0) {
         this->SaveModel(i);
@@ -279,6 +283,8 @@ class BoostLearnTask {
   int num_round;
   /*! \brief the period to save the model, 0 means only save the final round model */
   int save_period;
+  /*! \brief the period to eval the model, 1 means eval each round model */
+  int eval_period;
   /*! \brief the path of training/test data set */
   std::string train_path, test_path;
   /*! \brief the path of test model file, or file to restart training */

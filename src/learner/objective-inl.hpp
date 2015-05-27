@@ -119,12 +119,16 @@ class RegLossObj : public IObjFunction {
   explicit RegLossObj(int loss_type) {
     loss.loss_type = loss_type;
     scale_pos_weight = 1.0f;
+    scale_neg_weight = 1.0f;
   }
   virtual ~RegLossObj(void) {}
   virtual void SetParam(const char *name, const char *val) {
     using namespace std;
     if (!strcmp("scale_pos_weight", name)) {
       scale_pos_weight = static_cast<float>(atof(val));
+    }
+    if (!strcmp("scale_neg_weight", name)) {
+      scale_neg_weight = static_cast<float>(atof(val));
     }
   }
   virtual void GetGradient(const std::vector<float> &preds,
@@ -147,6 +151,7 @@ class RegLossObj : public IObjFunction {
       float p = loss.PredTransform(preds[i]);
       float w = info.GetWeight(j);
       if (info.labels[j] == 1.0f) w *= scale_pos_weight;
+      else w *= scale_neg_weight;
       if (!loss.CheckLabel(info.labels[j])) label_correct = false;
       gpair[i] = bst_gpair(loss.FirstOrderGradient(p, info.labels[j]) * w,
                            loss.SecondOrderGradient(p, info.labels[j]) * w);
@@ -170,6 +175,7 @@ class RegLossObj : public IObjFunction {
 
  protected:
   float scale_pos_weight;
+  float scale_neg_weight;
   LossType loss;
 };
 

@@ -31,9 +31,9 @@ DataMatrix* LoadDataMatrix(const char *fname,
                            bool silent,
                            bool savebuffer,
                            bool loadsplit,
-                           const char *cache_file = NULL, utils::FeatMap *fmap = NULL);
+                           const char *cache_file = NULL, utils::FeatMap *fmap = NULL,const int wlibsvm = 0);
 /*!
- * \brief save DataMatrix into stream, 
+ * \brief save DataMatrix into stream,
  *  note: the saved dmatrix format may not be in exactly same as input
  *  SaveDMatrix will choose the best way to materialize the dmatrix.
  * \param dmat the dmatrix to be saved

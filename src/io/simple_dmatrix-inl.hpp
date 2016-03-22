@@ -2,7 +2,7 @@
 #define XGBOOST_IO_SIMPLE_DMATRIX_INL_HPP_
 /*!
  * \file simple_dmatrix-inl.hpp
- * \brief simple implementation of DMatrixS that can be used 
+ * \brief simple implementation of DMatrixS that can be used
  *  the data format of xgboost is templatized, which means it can accept
  *  any data structure that implements the function defined by FMatrix
  *  this file is a specific implementation of input data structure that can be used by BoostLearner
@@ -20,6 +20,7 @@
 #include "./simple_fmatrix-inl.hpp"
 #include "../sync/sync.h"
 #include "./libsvm_parser.h"
+#include "./wlibsvm_parser.h"
 
 namespace xgboost {
 namespace io {
@@ -86,24 +87,63 @@ class DMatrixSimple : public DataMatrix {
    * \param loadsplit whether loadsplit of data or all the data
    * \param silent whether print information or not
    */
-  inline void LoadText(const char *uri, bool silent = false, bool loadsplit = false, utils::FeatMap *fmap = NULL) {
+  inline void LoadText(const char *uri, bool silent = false, bool loadsplit = false, utils::FeatMap *fmap = NULL, const int wlibsvm = 0) {
     int rank = 0, npart = 1;
     if (loadsplit) {
       rank = rabit::GetRank();
       npart = rabit::GetWorldSize();
     }
-
-    LibSVMParser parser(
+    if(wlibsvm == 0){
+        LibSVMParser parser(
+            dmlc::InputSplit::Create(uri, rank, npart, "text"), 16, fmap);
+        this->Clear();
+        while (parser.Next()) {
+          const LibSVMPage &batch = parser.Value();
+          size_t nlabel = info.labels.size();
+          info.labels.resize(nlabel + batch.label.size());
+          if (batch.label.size() != 0) {
+            std::memcpy(BeginPtr(info.labels) + nlabel,
+                        BeginPtr(batch.label),
+                        batch.label.size() * sizeof(float));
+          }
+          size_t ndata = row_data_.size();
+          row_data_.resize(ndata + batch.data.size());
+          if (batch.data.size() != 0) {
+            std::memcpy(BeginPtr(row_data_) + ndata,
+                        BeginPtr(batch.data),
+                        batch.data.size() * sizeof(RowBatch::Entry));
+          }
+          row_ptr_.resize(row_ptr_.size() + batch.label.size());
+          for (size_t i = 0; i < batch.label.size(); ++i) {
+            row_ptr_[nlabel + i + 1] = row_ptr_[nlabel] + batch.offset[i + 1];
+          }
+          info.info.num_row += batch.Size();
+          for (size_t i = 0; i < batch.data.size(); ++i) {
+            info.info.num_col = std::max(info.info.num_col,
+                                         static_cast<size_t>(batch.data[i].index+1));
+          }
+        }
+}
+else {
+    WLibSVMParser parser(
         dmlc::InputSplit::Create(uri, rank, npart, "text"), 16, fmap);
     this->Clear();
     while (parser.Next()) {
-      const LibSVMPage &batch = parser.Value();
+      const WLibSVMPage &batch = parser.Value();
       size_t nlabel = info.labels.size();
       info.labels.resize(nlabel + batch.label.size());
+      size_t nweight = info.weights.size();
+      info.weights.resize(nweight + batch.weight.size());
+
       if (batch.label.size() != 0) {
         std::memcpy(BeginPtr(info.labels) + nlabel,
                     BeginPtr(batch.label),
                     batch.label.size() * sizeof(float));
+      }
+      if (batch.weight.size() != 0) {
+        std::memcpy(BeginPtr(info.weights) + nweight,
+                    BeginPtr(batch.weight),
+                    batch.weight.size() * sizeof(float));
       }
       size_t ndata = row_data_.size();
       row_data_.resize(ndata + batch.data.size());
@@ -120,8 +160,9 @@ class DMatrixSimple : public DataMatrix {
       for (size_t i = 0; i < batch.data.size(); ++i) {
         info.info.num_col = std::max(info.info.num_col,
                                      static_cast<size_t>(batch.data[i].index+1));
-      }      
+      }
     }
+}
     if (!silent) {
       utils::Printf("%lux%lu matrix with %lu entries is loaded from %s\n",
                     static_cast<unsigned long>(info.num_row()),
@@ -136,13 +177,15 @@ class DMatrixSimple : public DataMatrix {
         utils::Check(info.group_ptr.back() == info.num_row(),
                      "DMatrix: group data does not match the number of rows in features");
       }
-      std::string wname = name + ".weight";
-      if (info.TryLoadFloatInfo("weight", wname.c_str(), silent)) {
-        utils::Check(info.weights.size() == info.num_row(),
-                     "DMatrix: weight data does not match the number of rows in features");
-      }
+      if(wlibsvm == 0){
+          std::string wname = name + ".weight";
+          if (info.TryLoadFloatInfo("weight", wname.c_str(), silent)) {
+            utils::Check(info.weights.size() == info.num_row(),
+                         "DMatrix: weight data does not match the number of rows in features");
+          }
+     }
       std::string mname = name + ".base_margin";
-      if (info.TryLoadFloatInfo("base_margin", mname.c_str(), silent)) {      
+      if (info.TryLoadFloatInfo("base_margin", mname.c_str(), silent)) {
       }
     }
   }
@@ -225,7 +268,7 @@ class DMatrixSimple : public DataMatrix {
    * \param silent whether print information or not
    * \param savebuffer whether do save binary buffer if it is text
    */
-  inline void CacheLoad(const char *fname, bool silent = false, bool savebuffer = true, utils::FeatMap *fmap = NULL) {
+  inline void CacheLoad(const char *fname, bool silent = false, bool savebuffer = true, utils::FeatMap *fmap = NULL, const int wlibsvm = 0) {
     using namespace std;
     size_t len = strlen(fname);
     if (len > 8 && !strcmp(fname + len - 7, ".buffer")) {
@@ -237,7 +280,7 @@ class DMatrixSimple : public DataMatrix {
     char bname[1024];
     utils::SPrintf(bname, sizeof(bname), "%s.buffer", fname);
     if (!this->LoadBinary(bname, silent)) {
-      this->LoadText(fname, silent, false, fmap);
+      this->LoadText(fname, silent, false, fmap, wlibsvm);
       if (savebuffer) this->SaveBinary(bname, silent);
     }
   }
@@ -280,7 +323,7 @@ class DMatrixSimple : public DataMatrix {
     DMatrixSimple *parent_;
     // temporal space for batch
     RowBatch batch_;
-  }; 
+  };
 };
 }  // namespace io
 }  // namespace xgboost

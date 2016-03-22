@@ -12,7 +12,7 @@
 
 namespace xgboost {
 /*!
- * \brief wrapping the training process 
+ * \brief wrapping the training process
  */
 class BoostLearnTask {
  public:
@@ -20,7 +20,7 @@ class BoostLearnTask {
     if (argc < 2) {
       printf("Usage: <config>\n");
       return 0;
-    }    
+    }
     utils::ConfigIterator itr(argv[1]);
     while (itr.Next()) {
       this->SetParam(itr.name(), itr.val());
@@ -44,10 +44,10 @@ class BoostLearnTask {
     }
     if (rabit::IsDistributed() && data_split == "NONE") {
       this->SetParam("dsplit", "row");
-    }    
+    }
     if (rabit::GetRank() != 0) {
       this->SetParam("silent", "2");
-    }    
+    }
     this->InitData();
 
     if (task == "train") {
@@ -69,6 +69,7 @@ class BoostLearnTask {
     return 0;
   }
   inline void SetParam(const char *name, const char *val) {
+    if (!strcmp("wlibsvm", name)) wlibsvm = atoi(val);
     if (!strcmp("silent", name)) silent = atoi(val);
     if (!strcmp("use_buffer", name)) use_buffer = atoi(val);
     if (!strcmp("num_round", name)) num_round = atoi(val);
@@ -100,6 +101,7 @@ class BoostLearnTask {
  public:
   BoostLearnTask(void) {
     // default parameters
+    wlibsvm = 0;
     silent = 0;
     use_buffer = 1;
     num_round = 10;
@@ -139,28 +141,28 @@ class BoostLearnTask {
     if (name_fmap != "NULL") fmap.LoadText(name_fmap.c_str());
     if (task == "dump") return;
     if (task == "pred") {
-      data = io::LoadDataMatrix(test_path.c_str(), silent != 0, use_buffer != 0, loadsplit, NULL,&fmap);
+      data = io::LoadDataMatrix(test_path.c_str(), silent != 0, use_buffer != 0, loadsplit, NULL,&fmap, wlibsvm);
     } else {
       // training
       data = io::LoadDataMatrix(train_path.c_str(),
                                 silent != 0 && load_part == 0,
-                                use_buffer != 0, loadsplit, NULL, &fmap);
+                                use_buffer != 0, loadsplit, NULL, &fmap,wlibsvm);
       utils::Assert(eval_data_names.size() == eval_data_paths.size(), "BUG");
       for (size_t i = 0; i < eval_data_names.size(); ++i) {
         deval.push_back(io::LoadDataMatrix(eval_data_paths[i].c_str(),
                                            silent != 0,
                                            use_buffer != 0,
-                                           loadsplit, NULL, &fmap));
+                                           loadsplit, NULL, &fmap,wlibsvm));
         devalall.push_back(deval.back());
       }
-            
+
       std::vector<io::DataMatrix *> dcache(1, data);
       for (size_t i = 0; i < deval.size(); ++ i) {
         dcache.push_back(deval[i]);
       }
       // set cache data to be all training and evaluation data
       learner.SetCacheData(dcache);
-      
+
       // add training set to evaluation set if needed
       if (eval_train != 0) {
         devalall.push_back(data);
@@ -186,7 +188,7 @@ class BoostLearnTask {
     bool allow_lazy = learner.AllowLazyCheckPoint();
     for (int i = version / 2; i < num_round; ++i) {
       elapsed = (unsigned long)(time(NULL) - start);
-      if (version % 2 == 0) { 
+      if (version % 2 == 0) {
         if (!silent) printf("boosting round %d, %lu sec elapsed\n", i, elapsed);
         learner.UpdateOneIter(i, *data);
         if (allow_lazy) {
@@ -241,7 +243,7 @@ class BoostLearnTask {
     std::vector<std::string> dump = learner.DumpModel(fmap, dump_model_stats != 0);
     for (size_t i = 0; i < dump.size(); ++ i) {
       fprintf(fo,"booster[%lu]:\n", i);
-      fprintf(fo,"%s", dump[i].c_str()); 
+      fprintf(fo,"%s", dump[i].c_str());
     }
     fclose(fo);
   }
@@ -258,7 +260,7 @@ class BoostLearnTask {
     std::vector<float> preds;
     if (!silent) printf("start prediction...\n");
     learner.Predict(*data, pred_margin != 0, &preds, ntree_limit);
-    if (!silent) printf("writing prediction to %s\n", name_pred.c_str());    
+    if (!silent) printf("writing prediction to %s\n", name_pred.c_str());
     FILE *fo;
     if (name_pred != "stdout") {
       fo = utils::FopenCheck(name_pred.c_str(), "w");
@@ -271,13 +273,15 @@ class BoostLearnTask {
     if (fo != stdout) fclose(fo);
   }
  private:
+  /*! \brief whether enable weighted libsvm format */
+  int wlibsvm;
   /*! \brief whether silent */
   int silent;
   /*! \brief special load */
   int load_part;
   /*! \brief whether use auto binary buffer */
   int use_buffer;
-  /*! \brief whether evaluate training statistics */            
+  /*! \brief whether evaluate training statistics */
   int eval_train;
   /*! \brief number of boosting iterations */
   int num_round;

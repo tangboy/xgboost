@@ -14,11 +14,13 @@ DataMatrix* LoadDataMatrix(const char *fname,
                            bool silent,
                            bool savebuffer,
                            bool loadsplit,
-                           const char *cache_file, 
-                           utils::FeatMap *fmap) {
+                           const char *cache_file,
+                           utils::FeatMap *fmap,
+                           const int wlibsvm) {
+
   using namespace std;
   std::string fname_ = fname;
-  
+
   const char *dlm = strchr(fname, '#');
   if (dlm != NULL) {
     utils::Check(strchr(dlm + 1, '#') == NULL,
@@ -30,20 +32,20 @@ DataMatrix* LoadDataMatrix(const char *fname,
     cache_file = dlm +1;
   }
 
-  if (cache_file == NULL) { 
+  if (cache_file == NULL) {
     if (!std::strcmp(fname, "stdin") ||
         !std::strncmp(fname, "s3://", 5) ||
         !std::strncmp(fname, "hdfs://", 7) ||
         loadsplit) {
       DMatrixSimple *dmat = new DMatrixSimple();
-      dmat->LoadText(fname, silent, loadsplit, fmap);
+      dmat->LoadText(fname, silent, loadsplit, fmap, wlibsvm);
       return dmat;
     }
     int magic;
     utils::FileStream fs(utils::FopenCheck(fname, "rb"));
     utils::Check(fs.Read(&magic, sizeof(magic)) != 0, "invalid input file format");
     fs.Seek(0);
-    if (magic == DMatrixSimple::kMagic) { 
+    if (magic == DMatrixSimple::kMagic) {
       DMatrixSimple *dmat = new DMatrixSimple();
       dmat->LoadBinary(fs, silent, fname);
       fs.Close();
@@ -51,7 +53,7 @@ DataMatrix* LoadDataMatrix(const char *fname,
     }
     fs.Close();
     DMatrixSimple *dmat = new DMatrixSimple();
-    dmat->CacheLoad(fname, silent, savebuffer, fmap);
+    dmat->CacheLoad(fname, silent, savebuffer, fmap, wlibsvm);
     return dmat;
   } else {
     std::string cache_fname = cache_file;
@@ -82,7 +84,7 @@ DataMatrix* LoadDataMatrix(const char *fname,
   }
 }
 
-void SaveDataMatrix(const DataMatrix &dmat, const char *fname, bool silent) {  
+void SaveDataMatrix(const DataMatrix &dmat, const char *fname, bool silent) {
   if (dmat.magic == DMatrixSimple::kMagic) {
     const DMatrixSimple *p_dmat = static_cast<const DMatrixSimple*>(&dmat);
     p_dmat->SaveBinary(fname, silent);

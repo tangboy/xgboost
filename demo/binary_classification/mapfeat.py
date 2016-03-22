@@ -34,6 +34,7 @@ fo.close()
 
 fo = open( 'agaricus.txt', 'w' )
 for l in open( 'agaricus-lepiota.data' ):
+    fo.write('1.0\t')
     arr = l.split(',')
     if arr[0] == 'p':
         fo.write('1')

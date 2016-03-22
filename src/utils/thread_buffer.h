@@ -39,7 +39,7 @@ class ThreadBuffer {
   /*!
    * \brief initalize the buffered iterator
    * \param param a initialize parameter that will pass to factory, ignore it if not necessary
-   * \return false if the initlization can't be done, e.g. buffer file hasn't been created 
+   * \return false if the initlization can't be done, e.g. buffer file hasn't been created
    */
   inline bool Init(utils::FeatMap *fmap) {
     if (!factory.Init(fmap)) return false;
@@ -50,7 +50,7 @@ class ThreadBuffer {
     this->init_end = true;
     this->StartLoader();
     return true;
-  }  
+  }
 
   inline bool Init() {
     if (!factory.Init()) return false;
@@ -61,7 +61,7 @@ class ThreadBuffer {
     this->init_end = true;
     this->StartLoader();
     return true;
-  }  
+  }
   /*!\brief place the iterator before first value */
   inline void BeforeFirst(void) {
     // wait till last loader end
@@ -82,7 +82,7 @@ class ThreadBuffer {
     loading_need.Post();
     // set buffer value
     buf_index = 0;
-  }  
+  }
   /*! \brief destroy the buffer iterator, will deallocate the buffer */
   inline void Destroy(void) {
     // wait until the signal is consumed
@@ -90,7 +90,7 @@ class ThreadBuffer {
     loading_need.Post();
     loader_thread.Join();
     loading_need.Destroy();
-    loading_end.Destroy();    
+    loading_end.Destroy();
     for (size_t i = 0; i < bufA.size(); ++i) {
       factory.FreeSpace(bufA[i]);
     }
@@ -100,7 +100,7 @@ class ThreadBuffer {
     bufA.clear(); bufB.clear();
     factory.Destroy();
     this->init_end = false;
-  }  
+  }
   /*!
    * \brief get the next element needed in buffer
    * \param elem element to store into
@@ -112,14 +112,14 @@ class ThreadBuffer {
       this->SwitchBuffer();
       buf_index = 0;
     }
-    if (buf_index >= (current_buf ? endA : endB)) { 
+    if (buf_index >= (current_buf ? endA : endB)) {
       return false;
     }
     std::vector<Elem> &buf = current_buf ? bufA : bufB;
     elem = buf[buf_index];
     ++buf_index;
     return true;
-  }      
+  }
   /*!
    * \brief get the factory object
    */
@@ -161,7 +161,8 @@ class ThreadBuffer {
   inline void RunLoader(void) {
     while(!destroy_signal) {
       // sleep until loading is needed
-      loading_need.Wait();      
+
+      loading_need.Wait();
       std::vector<Elem> &buf = current_buf ? bufB : bufA;
       int i;
       for (i = 0; i < buf_size ; ++i) {
@@ -185,7 +186,7 @@ class ThreadBuffer {
   inline void StartLoader(void) {
     destroy_signal = false;
     // set param
-    current_buf = 1;    
+    current_buf = 1;
     loading_need.Init(1);
     loading_end .Init(0);
     // reset terminate limit
@@ -197,8 +198,8 @@ class ThreadBuffer {
     current_buf = 0;
     // wake loader for next part
     data_loaded = false;
-    loading_need.Post();    
-    buf_index = 0; 
+    loading_need.Post();
+    buf_index = 0;
   }
   /*!\brief switch double buffer */
   inline void SwitchBuffer(void) {

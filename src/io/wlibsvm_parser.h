@@ -1,11 +1,11 @@
 /*!
  *  Copyright (c) 2015 by Contributors
- * \file libsvm_parser.h
+ * \file wlibsvm_parser.h
  * \brief iterator parser to parse libsvm format
  * \author Tianqi Chen
  */
-#ifndef XGBOOST_IO_LIBSVM_PARSER_H_
-#define XGBOOST_IO_LIBSVM_PARSER_H_
+#ifndef XGBOOST_IO_WLIBSVM_PARSER_H_
+#define XGBOOST_IO_WLIBSVM_PARSER_H_
 #define NOMINMAX
 #include <vector>
 #include <cstring>
@@ -20,13 +20,15 @@
 
 namespace xgboost {
 namespace io {
-/*! \brief page returned by libsvm parser */
-struct LibSVMPage : public SparsePage {
+/*! \brief page returned by wlibsvm parser */
+struct WLibSVMPage : public SparsePage {
   std::vector<float> label;
+  std::vector<float> weight;
   // overload clear
   inline void Clear() {
     SparsePage::Clear();
     label.clear();
+    weight.clear();
   }
 };
 
@@ -35,9 +37,9 @@ struct LibSVMPage : public SparsePage {
  * and returns rows in input data
  * factry that was used by threadbuffer template
  */
-class LibSVMPageFactory  {
+class WLibSVMPageFactory  {
  public:
-  explicit LibSVMPageFactory()
+  explicit WLibSVMPageFactory()
       : bytes_read_(0), at_head_(true) {
   }
 
@@ -58,14 +60,14 @@ class LibSVMPageFactory  {
 
   }
   inline void SetParam(const char *name, const char *val) {}
-  inline bool LoadNext(std::vector<LibSVMPage> *data) {
+  inline bool LoadNext(std::vector<WLibSVMPage> *data) {
     return FillData(data);
   }
-  inline void FreeSpace(std::vector<LibSVMPage> *a) {
+  inline void FreeSpace(std::vector<WLibSVMPage> *a) {
     delete a;
   }
-  inline std::vector<LibSVMPage> *Create(void) {
-    return new std::vector<LibSVMPage>();
+  inline std::vector<WLibSVMPage> *Create(void) {
+    return new std::vector<WLibSVMPage>();
   }
   inline void BeforeFirst(void) {
     utils::Assert(at_head_, "cannot call beforefirst");
@@ -78,7 +80,7 @@ class LibSVMPageFactory  {
   }
 
  protected:
-  inline bool FillData(std::vector<LibSVMPage> *data) {
+  inline bool FillData(std::vector<WLibSVMPage> *data) {
     dmlc::InputSplit::Blob chunk;
     if (!source_->NextChunk(&chunk)) return false;
     int nthread;
@@ -89,7 +91,7 @@ class LibSVMPageFactory  {
     // reserve space for data
     data->resize(nthread);
     bytes_read_ += chunk.size;
-    utils::Assert(chunk.size != 0, "LibSVMParser.FileData");
+    utils::Assert(chunk.size != 0, "WLibSVMParser.FileData");
     char *head = reinterpret_cast<char*>(chunk.dptr);
     #pragma omp parallel num_threads(nthread_)
     {
@@ -116,32 +118,52 @@ class LibSVMPageFactory  {
    */
   inline void ParseBlock(char *begin,
                          char *end,
-                         LibSVMPage *out) {
+                         WLibSVMPage *out) {
     using namespace std;
     out->Clear();
     char *p = begin;
     while (p != end) {
       while (isspace(*p) && p != end) ++p;
       if (p == end) break;
-      char *head = p;
-      while (isdigit(*p) && p != end) ++p;
-      if (*p == ':') {
-        if(NULL == fmap_ || !fmap_->contain_exclude_feature(atoi(head))){
-        out->data.push_back(SparseBatch::Entry(atol(head), static_cast<bst_float>(atof(p + 1))));
-      }
-      } else {
-        if (out->label.size() != 0) {
+      char *record_end = ForwardFindEndLine(p,end);
+      if (out->label.size() != 0) {
           out->offset.push_back(out->data.size());
         }
-        out->label.push_back(static_cast<float>(atof(head)));
-      }
-      while (!isspace(*p) && p != end) ++p;
+      ParseOneRecord(p,record_end,out);
+      p = record_end;
+      while((*p == '\n' || *p == '\r') && p != end) ++p;
     }
     if (out->label.size() != 0) {
       out->offset.push_back(out->data.size());
     }
     utils::Check(out->label.size() + 1 == out->offset.size(),
-                 "LibSVMParser inconsistent");
+                 "WLibSVMParser inconsistent");
+  }
+
+  inline void ParseOneRecord(char *begin, char *end, WLibSVMPage *out){
+      // get weight
+      char *p = begin;
+      out->weight.push_back(static_cast<float>(atof(p)));
+      // get label
+      while(!isspace(*p) && p != end) ++p;
+      if (p == end) return ;
+      while(isspace(*p) && p != end) ++p;
+      if (p == end) return ;
+      out->label.push_back(static_cast<float>(atof(p)));
+
+      //get features
+      while(!isspace(*p) && p!= end) ++p;
+      if (p == end) return;
+      while(p != end){
+          while(isspace(*p) && p != end) ++p;
+          if (p == end) return ;
+          int index = atol(p);
+          while (isdigit(*p) && p != end) ++p;
+          if (*p == ':'){
+              out->data.push_back(SparseBatch::Entry(index, static_cast<bst_float>(atof(p + 1))));
+          }
+          while(!isspace(*p) && p != end) ++p;
+      }
   }
   /*!
    * \brief start from bptr, go backward and find first endof line
@@ -155,6 +177,19 @@ class LibSVMPageFactory  {
       if (*bptr == '\n' || *bptr == '\r') return bptr;
     }
     return begin;
+  }
+  /*!
+   * \brief start from begin, go forward and find first endof line
+   * \param  end position to go forward
+   * \param begin the beginning position of buffer
+   * \return position of first endof line going forward
+   */
+  inline char* ForwardFindEndLine(char *begin,
+                               char *end) {
+    for (; begin != end; ++begin) {
+      if (*begin == '\n' || *begin == '\r') return begin;
+    }
+    return end;
   }
 
  private:
@@ -172,9 +207,9 @@ class LibSVMPageFactory  {
 
 };
 
-class LibSVMParser : public utils::IIterator<LibSVMPage> {
+class WLibSVMParser : public utils::IIterator<WLibSVMPage> {
  public:
-  explicit LibSVMParser(dmlc::InputSplit *source,
+  explicit WLibSVMParser(dmlc::InputSplit *source,
                         int nthread, utils::FeatMap *fmap = NULL)
       : at_end_(false), data_ptr_(0), data_(NULL) {
     itr.SetParam("buffer_size", "2");
@@ -203,7 +238,7 @@ class LibSVMParser : public utils::IIterator<LibSVMPage> {
     }
     return true;
   }
-  virtual const LibSVMPage &Value(void) const {
+  virtual const WLibSVMPage &Value(void) const {
     return (*data_)[data_ptr_ - 1];
   }
   inline size_t bytes_read(void) const {
@@ -212,8 +247,8 @@ class LibSVMParser : public utils::IIterator<LibSVMPage> {
  private:
   bool at_end_;
   size_t data_ptr_;
-  std::vector<LibSVMPage> *data_;
-  utils::ThreadBuffer<std::vector<LibSVMPage>*, LibSVMPageFactory> itr;
+  std::vector<WLibSVMPage> *data_;
+  utils::ThreadBuffer<std::vector<WLibSVMPage>*, WLibSVMPageFactory> itr;
 };
 
 }  // namespace io

@@ -77,7 +77,7 @@ DataMatrix* LoadDataMatrix(const char *fname,
         return dmat;
       } else {
         DMatrixPage *dmat = new DMatrixPage();
-        dmat->LoadText(fname, cache_file, false, loadsplit, fmap);
+        dmat->LoadText(fname, cache_file, false, loadsplit, fmap, wlibsvm);
         return dmat;
       }
     }

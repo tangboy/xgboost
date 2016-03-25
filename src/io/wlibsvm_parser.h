@@ -122,17 +122,17 @@ class WLibSVMPageFactory  {
     using namespace std;
     out->Clear();
     char *p = begin;
+
     while (p != end) {
       while (isspace(*p) && p != end) ++p;
       if (p == end) break;
-      char *record_end = ForwardFindEndLine(p,end);
+      p = ParseOneRecord(p,out);
       if (out->label.size() != 0) {
           out->offset.push_back(out->data.size());
-        }
-      ParseOneRecord(p,record_end,out);
-      p = record_end;
-      while((*p == '\n' || *p == '\r') && p != end) ++p;
+      }
+      while(isspace(*p) && p != end) ++p;
     }
+
     if (out->label.size() != 0) {
       out->offset.push_back(out->data.size());
     }
@@ -140,31 +140,33 @@ class WLibSVMPageFactory  {
                  "WLibSVMParser inconsistent");
   }
 
-  inline void ParseOneRecord(char *begin, char *end, WLibSVMPage *out){
+  inline char* ParseOneRecord(char *begin, WLibSVMPage *out){
       // get weight
       char *p = begin;
       out->weight.push_back(static_cast<float>(atof(p)));
-      // get label
-      while(!isspace(*p) && p != end) ++p;
-      if (p == end) return ;
-      while(isspace(*p) && p != end) ++p;
-      if (p == end) return ;
-      out->label.push_back(static_cast<float>(atof(p)));
 
+      // get label
+      while(!isspace(*p)) ++p;
+      out->label.push_back(static_cast<float>(atof(p)));
+      while(isspace(*p)) ++p;
+      while(!isspace(*p)) ++p;
+      if (*p == '\r' || *p == '\n') return p;
       //get features
-      while(!isspace(*p) && p!= end) ++p;
-      if (p == end) return;
-      while(p != end){
-          while(isspace(*p) && p != end) ++p;
-          if (p == end) return ;
+      while(*p != '\r' && *p != '\n') {
+          while(isspace(*p) && *p != '\r' && *p != '\n') ++p;
+          if (*p == '\r' || *p == '\n') return p;
           int index = atol(p);
-          while (isdigit(*p) && p != end) ++p;
+          while (isdigit(*p)) ++p;
           if (*p == ':'){
+              if(NULL == fmap_ || !fmap_->contain_exclude_feature(index)){
               out->data.push_back(SparseBatch::Entry(index, static_cast<bst_float>(atof(p + 1))));
           }
-          while(!isspace(*p) && p != end) ++p;
+          }
+          while(!isspace(*p)) ++p;
       }
+      return p;
   }
+
   /*!
    * \brief start from bptr, go backward and find first endof line
    * \param bptr end position to go backward
@@ -177,19 +179,6 @@ class WLibSVMPageFactory  {
       if (*bptr == '\n' || *bptr == '\r') return bptr;
     }
     return begin;
-  }
-  /*!
-   * \brief start from begin, go forward and find first endof line
-   * \param  end position to go forward
-   * \param begin the beginning position of buffer
-   * \return position of first endof line going forward
-   */
-  inline char* ForwardFindEndLine(char *begin,
-                               char *end) {
-    for (; begin != end; ++begin) {
-      if (*begin == '\n' || *begin == '\r') return begin;
-    }
-    return end;
   }
 
  private:

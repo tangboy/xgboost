@@ -134,7 +134,7 @@ class DMatrixPageBase : public DataMatrix {
                        const char* cache_file,
                        bool silent,
                        bool loadsplit,
-                       utils::FeatMap *fmap = NULL) {
+                       utils::FeatMap *fmap = NULL, const int wlibsvm = 0) {
     if (!silent) {
       utils::Printf("start generate text file from %s\n", uri);
     }
@@ -145,21 +145,61 @@ class DMatrixPageBase : public DataMatrix {
     }
     this->set_cache_file(cache_file);
     std::string fname_row = std::string(cache_file) + ".row.blob";
-    utils::FileStream fo(utils::FopenCheck(fname_row.c_str(), "wb"));    
+    utils::FileStream fo(utils::FopenCheck(fname_row.c_str(), "wb"));
     SparsePage page;
     size_t bytes_write = 0;
     double tstart = rabit::utils::GetTime();
-    LibSVMParser parser(
+    if (wlibsvm == 0){
+        LibSVMParser parser(
+            dmlc::InputSplit::Create(uri, rank, npart, "text"), 16, fmap);
+        info.Clear();
+        while (parser.Next()) {
+          const LibSVMPage &batch = parser.Value();
+          size_t nlabel = info.labels.size();
+          info.labels.resize(nlabel + batch.label.size());
+          if (batch.label.size() != 0) {
+            std::memcpy(BeginPtr(info.labels) + nlabel,
+                        BeginPtr(batch.label),
+                        batch.label.size() * sizeof(float));
+          }
+          page.Push(batch);
+          for (size_t i = 0; i < batch.data.size(); ++i) {
+            info.info.num_col = std::max(info.info.num_col,
+                                         static_cast<size_t>(batch.data[i].index+1));
+          }
+          if (page.MemCostBytes() >= kPageSize) {
+            bytes_write += page.MemCostBytes();
+            page.Save(&fo);
+            page.Clear();
+            double tdiff = rabit::utils::GetTime() - tstart;
+            if (!silent) {
+              utils::Printf("Writting to %s in %g MB/s, %lu MB written\n",
+                            cache_file, (bytes_write >> 20UL) / tdiff,
+                            (bytes_write >> 20UL));
+            }
+          }
+          info.info.num_row += batch.label.size();
+        }
+}
+else{
+    WLibSVMParser parser(
         dmlc::InputSplit::Create(uri, rank, npart, "text"), 16, fmap);
     info.Clear();
     while (parser.Next()) {
-      const LibSVMPage &batch = parser.Value();
+      const WLibSVMPage &batch = parser.Value();
       size_t nlabel = info.labels.size();
       info.labels.resize(nlabel + batch.label.size());
+      size_t nweight = info.weights.size();
+      info.weights.resize(nweight + batch.weight.size());
       if (batch.label.size() != 0) {
         std::memcpy(BeginPtr(info.labels) + nlabel,
                     BeginPtr(batch.label),
                     batch.label.size() * sizeof(float));
+      }
+      if (batch.weight.size() != 0) {
+        std::memcpy(BeginPtr(info.weights) + nweight,
+                    BeginPtr(batch.weight),
+                    batch.weight.size() * sizeof(float));
       }
       page.Push(batch);
       for (size_t i = 0; i < batch.data.size(); ++i) {
@@ -179,11 +219,12 @@ class DMatrixPageBase : public DataMatrix {
       }
       info.info.num_row += batch.label.size();
     }
+}
     if (page.data.size() != 0) {
       page.Save(&fo);
     }
-    fo.Close();    
-    iter_->Load(utils::FileStream(utils::FopenCheck(fname_row.c_str(), "rb")));    
+    fo.Close();
+    iter_->Load(utils::FileStream(utils::FopenCheck(fname_row.c_str(), "rb")));
     // save data matrix
     utils::FileStream fs(utils::FopenCheck(cache_file, "wb"));
     int tmagic = kMagic;
@@ -245,12 +286,12 @@ class DMatrixHalfRAM : public DMatrixPageBase<0xffffab03> {
   virtual IFMatrix *fmat(void) const {
     return fmat_;
   }
-  virtual void set_cache_file(const std::string &cache_file) {    
+  virtual void set_cache_file(const std::string &cache_file) {
   }
   virtual void CheckMagic(int tmagic) {
     utils::Check(tmagic == DMatrixPageBase<0xffffab02>::kMagic ||
                  tmagic == DMatrixPageBase<0xffffab03>::kMagic,
-                 "invalid format,magic number mismatch");   
+                 "invalid format,magic number mismatch");
   }
   /*! \brief the real fmatrix */
   IFMatrix *fmat_;

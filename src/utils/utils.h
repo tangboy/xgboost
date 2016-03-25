@@ -10,6 +10,7 @@
 #include <string>
 #include <cstdlib>
 #include <vector>
+#include <sstream>
 
 #ifndef XGBOOST_STRICT_CXX98_
 #include <cstdarg>
@@ -19,7 +20,7 @@
 #define fopen64 std::fopen
 #endif
 #ifdef _MSC_VER
-// NOTE: sprintf_s is not equivalent to snprintf, 
+// NOTE: sprintf_s is not equivalent to snprintf,
 // they are equivalent when success, which is sufficient for our case
 #define snprintf sprintf_s
 #define vsnprintf vsprintf_s
@@ -30,7 +31,7 @@
 #endif
 #endif
 
-#ifdef __APPLE__ 
+#ifdef __APPLE__
 #define off64_t off_t
 #define fopen64 std::fopen
 #endif
@@ -58,17 +59,17 @@ namespace utils {
 const int kPrintBuffer = 1 << 12;
 
 #ifndef XGBOOST_CUSTOMIZE_MSG_
-/*! 
+/*!
  * \brief handling of Assert error, caused by in-apropriate input
- * \param msg error message 
+ * \param msg error message
  */
 inline void HandleAssertError(const char *msg) {
   fprintf(stderr, "AssertError:%s\n", msg);
   exit(-1);
 }
-/*! 
+/*!
  * \brief handling of Check error, caused by in-apropriate input
- * \param msg error message 
+ * \param msg error message
  */
 inline void HandleCheckError(const char *msg) {
   fprintf(stderr, "%s\n", msg);
